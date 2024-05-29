@@ -241,7 +241,7 @@
             this.cmbTipoTransaccion.Name = "cmbTipoTransaccion";
             this.cmbTipoTransaccion.Size = new System.Drawing.Size(394, 34);
             this.cmbTipoTransaccion.TabIndex = 19;
-            this.cmbTipoTransaccion.SelectedIndexChanged += new System.EventHandler(this.cmbTipoTransaccion_SelectedIndexChanged);
+            this.cmbTipoTransaccion.SelectedIndexChanged += new System.EventHandler(this.label7_Click);
             // 
             // label2
             // 

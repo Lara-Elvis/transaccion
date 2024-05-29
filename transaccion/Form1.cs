@@ -37,36 +37,7 @@ namespace transaccion
             
         }
 
-        private void cmbTipoTransaccion_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            // llenar los campos basándose en el tipo de transacción seleccionado
-            string tipoTransaccion = cmbTipoTransaccion.SelectedItem.ToString();
-
-            if (tipoTransaccion == "Pago")
-            {
-                txtNoCuentaDebit.Text = "123456";
-                txtNomCuentaDebit.Text = "Cuenta Debito Pago";
-                txtNoCuentaCredito.Text = "654321";
-                txtNomCuentaCredito.Text = "Cuenta Credito Pago";
-                txtMonto.Text = "100.00";
-            }
-            else if (tipoTransaccion == "Transferencia")
-            {
-                txtNoCuentaDebit.Text = "234567";
-                txtNomCuentaDebit.Text = "Cuenta Debito Transferencia";
-                txtNoCuentaCredito.Text = "765432";
-                txtNomCuentaCredito.Text = "Cuenta Credito Transferencia";
-                txtMonto.Text = "200.00";
-            }
-            else if (tipoTransaccion == "Depósito")
-            {
-                txtNoCuentaDebit.Text = "345678";
-                txtNomCuentaDebit.Text = "Cuenta Debito Depósito";
-                txtNoCuentaCredito.Text = "876543";
-                txtNomCuentaCredito.Text = "Cuenta Credito Depósito";
-                txtMonto.Text = "300.00";
-            }
-        }
+        
 
         private void label7_Click(object sender, EventArgs e)
         {
@@ -75,27 +46,117 @@ namespace transaccion
 
         private void button1_Click(object sender, EventArgs e)
         {
-
             using (OracleConnection conn = new OracleConnection(connectionString))
             {
                 try
                 {
                     conn.Open();
-                    string query = "INSERT INTO Transacciones (tipo_transaccion, no_cuenta_debit, nom_cuenta_debit, no_cuenta_credito, nom_cuenta_credito, monto) " +
-                                   "VALUES (:tipo_transaccion, :no_cuenta_debit, :nom_cuenta_debit, :no_cuenta_credito, :nom_cuenta_credito, :monto)";
+                    MessageBox.Show("Conexión a la base de datos establecida.");
 
-                    using (OracleCommand cmd = new OracleCommand(query, conn))
+                    decimal saldoDebito = 0;
+                    decimal monto = Convert.ToDecimal(txtMonto.Text);
+
+                    // Verificar cuenta de débito
+                    string verificarCuentaDebitoQuery = "SELECT saldo FROM CuentasBancarias WHERE numero_cuenta = :numero_cuenta_debito";
+                    using (OracleCommand cmd = new OracleCommand(verificarCuentaDebitoQuery, conn))
                     {
-                        cmd.Parameters.Add(new OracleParameter("tipo_transaccion", cmbTipoTransaccion.SelectedItem.ToString()));
-                        cmd.Parameters.Add(new OracleParameter("no_cuenta_debit", txtNoCuentaDebit.Text));
-                        cmd.Parameters.Add(new OracleParameter("nom_cuenta_debit", txtNomCuentaDebit.Text));
-                        cmd.Parameters.Add(new OracleParameter("no_cuenta_credito", txtNoCuentaCredito.Text));
-                        cmd.Parameters.Add(new OracleParameter("nom_cuenta_credito", txtNomCuentaCredito.Text));
-                        cmd.Parameters.Add(new OracleParameter("monto", Convert.ToDecimal(txtMonto.Text)));
+                        string cuentaDebito = txtNoCuentaDebit.Text.Trim(); // Eliminar espacios en blanco
+                        MessageBox.Show("Número de cuenta de débito (después de Trim): " + cuentaDebito);
 
-                        cmd.ExecuteNonQuery();
+                        cmd.Parameters.Add(new OracleParameter("numero_cuenta_debito", cuentaDebito));
+
+                        object result = cmd.ExecuteScalar();
+                        if (result == null || result == DBNull.Value)
+                        {
+                            MessageBox.Show("La cuenta de débito no existe o el saldo no es válido.");
+                            return;
+                        }
+                        saldoDebito = Convert.ToDecimal(result);
+                        MessageBox.Show("Saldo de la cuenta de débito: " + saldoDebito);
+                    }
+
+                    if (saldoDebito < monto)
+                    {
+                        MessageBox.Show("Saldo insuficiente en la cuenta de débito.");
+                        return;
+                    }
+
+                    // Verificar cuenta de crédito
+                    string verificarCuentaCreditoQuery = "SELECT saldo FROM CuentasBancarias WHERE numero_cuenta = :numero_cuenta_credito";
+                    using (OracleCommand cmd = new OracleCommand(verificarCuentaCreditoQuery, conn))
+                    {
+                        string cuentaCredito = txtNoCuentaCredito.Text.Trim(); // Eliminar espacios en blanco
+                        MessageBox.Show("Número de cuenta de crédito (después de Trim): " + cuentaCredito);
+
+                        cmd.Parameters.Add(new OracleParameter("numero_cuenta_credito", cuentaCredito));
+
+                        object result = cmd.ExecuteScalar();
+                        if (result == null || result == DBNull.Value)
+                        {
+                            MessageBox.Show("La cuenta de crédito no existe o el saldo no es válido.");
+                            return;
+                        }
+                        MessageBox.Show("La cuenta de crédito existe.");
+                    }
+
+                    // Realizar transacción
+                    OracleTransaction transaction = conn.BeginTransaction();
+                    try
+                    {
+                        // Debitar cuenta de débito
+                        string debitoQuery = "UPDATE CuentasBancarias SET saldo = saldo - :monto WHERE numero_cuenta = :numero_cuenta_debito";
+                        using (OracleCommand cmd = new OracleCommand(debitoQuery, conn))
+                        {
+                            cmd.Transaction = transaction;
+                            string cuentaDebito = txtNoCuentaDebit.Text.Trim(); // Reutilizar la variable con valor trimmed
+                            cmd.Parameters.Add(new OracleParameter("monto", monto));
+                            cmd.Parameters.Add(new OracleParameter("numero_cuenta_debito", cuentaDebito));
+                            MessageBox.Show("Ejecutando débito: " + debitoQuery + " con monto: " + monto + " y número de cuenta: " + cuentaDebito);
+                            cmd.ExecuteNonQuery();
+                            MessageBox.Show("Cuenta de débito actualizada.");
+                        }
+
+                        // Acreditar cuenta de crédito
+                        string creditoQuery = "UPDATE CuentasBancarias SET saldo = saldo + :monto WHERE numero_cuenta = :numero_cuenta_credito";
+                        using (OracleCommand cmd = new OracleCommand(creditoQuery, conn))
+                        {
+                            cmd.Transaction = transaction;
+                            string cuentaCredito = txtNoCuentaCredito.Text.Trim(); // Reutilizar la variable con valor trimmed
+                            cmd.Parameters.Add(new OracleParameter("monto", monto));
+                            cmd.Parameters.Add(new OracleParameter("numero_cuenta_credito", cuentaCredito));
+                            MessageBox.Show("Ejecutando crédito: " + creditoQuery + " con monto: " + monto + " y número de cuenta: " + cuentaCredito);
+                            cmd.ExecuteNonQuery();
+                            MessageBox.Show("Cuenta de crédito actualizada.");
+                        }
+
+                        // Obtener IDs de las cuentas
+                        int cuentaDebitoId = ObtenerCuentaIdPorNumero(conn, txtNoCuentaDebit.Text.Trim(), transaction);
+                        int cuentaCreditoId = ObtenerCuentaIdPorNumero(conn, txtNoCuentaCredito.Text.Trim(), transaction);
+
+                        // Registrar transacción
+                        string transaccionQuery = "INSERT INTO Transacciones (tipo_transaccion, cuenta_debito_id, cuenta_credito_id, monto) " +
+                                                  "VALUES (:tipo_transaccion, :cuenta_debito_id, :cuenta_credito_id, :monto)";
+                        using (OracleCommand cmd = new OracleCommand(transaccionQuery, conn))
+                        {
+                            cmd.Transaction = transaction;
+                            cmd.Parameters.Add(new OracleParameter("tipo_transaccion", cmbTipoTransaccion.SelectedItem.ToString()));
+                            cmd.Parameters.Add(new OracleParameter("cuenta_debito_id", cuentaDebitoId));
+                            cmd.Parameters.Add(new OracleParameter("cuenta_credito_id", cuentaCreditoId));
+                            cmd.Parameters.Add(new OracleParameter("monto", monto));
+                            MessageBox.Show("Insertando transacción: " + transaccionQuery);
+                            cmd.ExecuteNonQuery();
+                            MessageBox.Show("Transacción registrada.");
+                        }
+
+                        transaction.Commit();
                         MessageBox.Show("Transacción realizada correctamente.");
                     }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        MessageBox.Show("Error al realizar la transacción: " + ex.Message);
+                    }
+
                     CargarTransacciones();
                 }
                 catch (Exception ex)
@@ -103,7 +164,17 @@ namespace transaccion
                     MessageBox.Show("Error al realizar la transacción: " + ex.Message);
                 }
             }
+        }
 
+        private int ObtenerCuentaIdPorNumero(OracleConnection conn, string numeroCuenta, OracleTransaction transaction)
+        {
+            string query = "SELECT cuenta_id FROM CuentasBancarias WHERE numero_cuenta = :numero_cuenta";
+            using (OracleCommand cmd = new OracleCommand(query, conn))
+            {
+                cmd.Transaction = transaction; 
+                cmd.Parameters.Add(new OracleParameter("numero_cuenta", numeroCuenta));
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
         }
 
         private void CargarTransacciones()
